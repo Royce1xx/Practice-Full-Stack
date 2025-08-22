@@ -6,6 +6,70 @@ const addTaskForm = document.getElementById('addTaskForm');
 const editTaskForm = document.getElementById('editTaskForm');
 const editForm = document.getElementById('editForm');
 const tasksList = document.getElementById('tasksList');
+const themeToggle = document.getElementById('themeToggle');
+
+// Notification system
+function showNotification(message, type = 'success') {
+    // Remove existing notifications
+    const existingNotifications = document.querySelectorAll('.notification');
+    existingNotifications.forEach(notification => notification.remove());
+
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+
+    document.body.appendChild(notification);
+
+    // Trigger animation
+    setTimeout(() => notification.classList.add('show'), 100);
+
+    // Auto-hide after 3 seconds
+    setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+// Loading state management
+function setLoading(form, isLoading) {
+    const submitButton = form.querySelector('button[type="submit"]');
+    if (isLoading) {
+        submitButton.classList.add('btn-loading');
+        submitButton.disabled = true;
+        form.classList.add('loading');
+    } else {
+        submitButton.classList.remove('btn-loading');
+        submitButton.disabled = false;
+        form.classList.remove('loading');
+    }
+}
+
+// Theme management
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeIcon(savedTheme);
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    updateThemeIcon(newTheme);
+}
+
+function updateThemeIcon(theme) {
+    const icon = themeToggle.querySelector('.theme-icon');
+    icon.textContent = theme === 'light' ? '🌙' : '☀️';
+}
+
+// Initialize theme
+initTheme();
+
+// Theme toggle event listener
+themeToggle.addEventListener('click', toggleTheme);
 
 // Load tasks when page loads
 document.addEventListener('DOMContentLoaded', loadTasks);
@@ -16,6 +80,9 @@ addTaskForm.addEventListener('submit', async (e) => {
 
     const title = document.getElementById('taskTitle').value;
     const description = document.getElementById('taskDescription').value;
+
+    // Set loading state
+    setLoading(addTaskForm, true);
 
     try {
         const response = await fetch(`${API_URL}/tasks`, {
@@ -30,13 +97,17 @@ addTaskForm.addEventListener('submit', async (e) => {
             // Clear form
             addTaskForm.reset();
             // Reload tasks
-            loadTasks();
+            await loadTasks();
+            showNotification('Task created successfully! 🎉');
         } else {
             const error = await response.json();
-            alert('Error: ' + error.error);
+            showNotification('Error: ' + error.error, 'error');
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showNotification('Error: ' + error.message, 'error');
+    } finally {
+        // Clear loading state
+        setLoading(addTaskForm, false);
     }
 });
 
@@ -48,6 +119,9 @@ editTaskForm.addEventListener('submit', async (e) => {
     const title = document.getElementById('editTaskTitle').value;
     const description = document.getElementById('editTaskDescription').value;
     const completed = document.getElementById('editTaskCompleted').checked;
+
+    // Set loading state
+    setLoading(editTaskForm, true);
 
     try {
         const response = await fetch(`${API_URL}/tasks/${id}`, {
@@ -62,28 +136,35 @@ editTaskForm.addEventListener('submit', async (e) => {
             // Hide edit form
             editForm.style.display = 'none';
             // Reload tasks
-            loadTasks();
+            await loadTasks();
+            showNotification('Task updated successfully! ✨');
         } else {
             const error = await response.json();
-            alert('Error: ' + error.error);
+            showNotification('Error: ' + error.error, 'error');
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showNotification('Error: ' + error.message, 'error');
+    } finally {
+        // Clear loading state
+        setLoading(editTaskForm, false);
     }
 });
 
 // Load all tasks
 async function loadTasks() {
     try {
+        // Show loading state
+        tasksList.innerHTML = '<div class="loading-state"><div class="spinner"></div> Loading tasks...</div>';
+
         const response = await fetch(`${API_URL}/tasks`);
         if (response.ok) {
             const tasks = await response.json();
             displayTasks(tasks);
         } else {
-            tasksList.innerHTML = '<p>Error loading tasks</p>';
+            tasksList.innerHTML = '<p class="error-message">Error loading tasks</p>';
         }
     } catch (error) {
-        tasksList.innerHTML = '<p>Error: ' + error.message + '</p>';
+        tasksList.innerHTML = '<p class="error-message">Error: ' + error.message + '</p>';
     }
 }
 
@@ -147,12 +228,13 @@ async function deleteTask(id) {
 
         if (response.ok) {
             // Reload tasks
-            loadTasks();
+            await loadTasks();
+            showNotification('Task deleted successfully! 🗑️');
         } else {
             const error = await response.json();
-            alert('Error: ' + error.error);
+            showNotification('Error: ' + error.error, 'error');
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showNotification('Error: ' + error.message, 'error');
     }
 }
