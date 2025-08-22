@@ -1,32 +1,46 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sqlite3
-import os
+from supabase import create_client, Client
 from datetime import datetime
+import config
 
 app = Flask(__name__)
 app.static_folder = 'public'
 app.static_url_path = ''
 CORS(app)
 
-# Database setup
+# Supabase setup
+def create_supabase_client():
+    try:
+        client = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
+        print(f"✅ Connected to Supabase at: {config.SUPABASE_URL}")
+        return client
+    except Exception as e:
+        print(f"❌ Failed to connect to Supabase: {e}")
+        print("Check your credentials in config.py")
+        return None
+
+# Database setup - create table if it doesn't exist
 def init_db():
-    conn = sqlite3.connect('tasks.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            description TEXT,
-            completed BOOLEAN DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    try:
+        # Test the connection
+        client = create_supabase_client()
+        if client:
+            # Try to access the tasks table to see if it exists
+            response = client.table('tasks').select('id').limit(1).execute()
+            print("✅ Database connection successful")
+            print("✅ Tasks table accessible")
+        else:
+            print("❌ Cannot initialize database - Supabase connection failed")
+    except Exception as e:
+        print(f"❌ Database initialization error: {e}")
+        print("Make sure to create the 'tasks' table in your Supabase dashboard")
 
 # Initialize database when app starts
 init_db()
+
+# Get the Supabase client
+supabase = create_supabase_client()
 
 @app.route('/')
 def index():
@@ -43,23 +57,12 @@ def js():
 # GET all tasks
 @app.route('/api/tasks', methods=['GET'])
 def get_tasks():
+    if not supabase:
+        return jsonify({'error': 'Database connection not available'}), 500
+    
     try:
-        conn = sqlite3.connect('tasks.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM tasks ORDER BY created_at DESC')
-        rows = cursor.fetchall()
-        
-        tasks = []
-        for row in rows:
-            tasks.append({
-                'id': row[0],
-                'title': row[1],
-                'description': row[2],
-                'completed': bool(row[3]),
-                'created_at': row[4]
-            })
-        
-        conn.close()
+        response = supabase.table('tasks').select('*').order('created_at', desc=True).execute()
+        tasks = response.data
         return jsonify(tasks)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -68,22 +71,12 @@ def get_tasks():
 @app.route('/api/tasks/<int:task_id>', methods=['GET'])
 def get_task(task_id):
     try:
-        conn = sqlite3.connect('tasks.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM tasks WHERE id = ?', (task_id,))
-        row = cursor.fetchone()
-        conn.close()
+        response = supabase.table('tasks').select('*').eq('id', task_id).execute()
         
-        if row is None:
+        if not response.data:
             return jsonify({'error': 'Task not found'}), 404
         
-        task = {
-            'id': row[0],
-            'title': row[1],
-            'description': row[2],
-            'completed': bool(row[3]),
-            'created_at': row[4]
-        }
+        task = response.data[0]
         return jsonify(task)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -99,24 +92,16 @@ def create_task():
         if not title:
             return jsonify({'error': 'Title is required'}), 400
         
-        conn = sqlite3.connect('tasks.db')
-        cursor = conn.cursor()
-        cursor.execute(
-            'INSERT INTO tasks (title, description) VALUES (?, ?)',
-            (title, description)
-        )
-        task_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        
         new_task = {
-            'id': task_id,
             'title': title,
             'description': description,
-            'completed': False,
-            'created_at': datetime.now().isoformat()
+            'completed': False
         }
-        return jsonify(new_task), 201
+        
+        response = supabase.table('tasks').insert(new_task).execute()
+        created_task = response.data[0]
+        
+        return jsonify(created_task), 201
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -129,19 +114,17 @@ def update_task(task_id):
         description = data.get('description', '')
         completed = data.get('completed', False)
         
-        conn = sqlite3.connect('tasks.db')
-        cursor = conn.cursor()
-        cursor.execute(
-            'UPDATE tasks SET title = ?, description = ?, completed = ? WHERE id = ?',
-            (title, description, 1 if completed else 0, task_id)
-        )
+        update_data = {
+            'title': title,
+            'description': description,
+            'completed': completed
+        }
         
-        if cursor.rowcount == 0:
-            conn.close()
+        response = supabase.table('tasks').update(update_data).eq('id', task_id).execute()
+        
+        if not response.data:
             return jsonify({'error': 'Task not found'}), 404
         
-        conn.commit()
-        conn.close()
         return jsonify({'message': 'Task updated successfully'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -150,21 +133,16 @@ def update_task(task_id):
 @app.route('/api/tasks/<int:task_id>', methods=['DELETE'])
 def delete_task(task_id):
     try:
-        conn = sqlite3.connect('tasks.db')
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
+        response = supabase.table('tasks').delete().eq('id', task_id).execute()
         
-        if cursor.rowcount == 0:
-            conn.close()
+        if not response.data:
             return jsonify({'error': 'Task not found'}), 404
         
-        conn.commit()
-        conn.close()
         return jsonify({'message': 'Task deleted successfully'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     print("Server running on http://localhost:5000")
-    print("Database: tasks.db")
+    print("Database: Supabase (PostgreSQL)")
     app.run(debug=True, port=5000)

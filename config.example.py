@@ -1,0 +1,11 @@
+# Supabase Configuration Example
+# Copy this file to config.py and fill in your actual credentials
+
+SUPABASE_URL = "your_supabase_project_url_here"
+SUPABASE_KEY = "your_supabase_anon_key_here"
+
+# You can find these in your Supabase project dashboard:
+# 1. Go to https://supabase.com/dashboard
+# 2. Select your project
+# 3. Go to Settings > API
+# 4. Copy the "Project URL" and "anon public" key
