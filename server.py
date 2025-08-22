@@ -5,6 +5,8 @@ import os
 from datetime import datetime
 
 app = Flask(__name__)
+app.static_folder = 'public'
+app.static_url_path = ''
 CORS(app)
 
 # Database setup
@@ -29,6 +31,14 @@ init_db()
 @app.route('/')
 def index():
     return app.send_static_file('index.html')
+
+@app.route('/style.css')
+def css():
+    return app.send_static_file('style.css')
+
+@app.route('/script.js')
+def js():
+    return app.send_static_file('script.js')
 
 # GET all tasks
 @app.route('/api/tasks', methods=['GET'])
